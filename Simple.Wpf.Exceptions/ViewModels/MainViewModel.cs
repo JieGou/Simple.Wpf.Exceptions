@@ -7,7 +7,7 @@ namespace Simple.Wpf.Exceptions.ViewModels
     using Commands;
     using Extensions;
     using Services;
-    
+
     public sealed class MainViewModel : BaseViewModel, IMainViewModel
     {
         public MainViewModel(ISchedulerService schedulerService)
@@ -21,46 +21,55 @@ namespace Simple.Wpf.Exceptions.ViewModels
             ThrowFromRxCommand = ReactiveCommand.Create()
                 .DisposeWith(this);
 
+            void ThrowFromUiThreadCommandExecute(object x)
+            {
+                Logger.Info("ThrowFromUiThreadCommand executing...");
+                throw new Exception(x + " - thrown from UI thread.");
+            }
+
             ThrowFromUiThreadCommand
                 .ActivateGestures()
-                .SafeSubscribe(x =>
-                               {
-                                   Logger.Info("ThrowFromUiThreadCommand executing...");
-                                   throw new Exception(x + " - thrown from UI thread.");
-                               }, schedulerService.Dispatcher)
+                .SafeSubscribe(ThrowFromUiThreadCommandExecute, schedulerService.Dispatcher)
                 .DisposeWith(this);
+
+            void ThrowFromTaskCommandExecute(object x)
+            {
+                Logger.Info("ThrowFromTaskCommand executing...");
+
+                void ThrownFromTaskAction()
+                {
+                    Thread.Sleep(1000);
+
+                    throw new Exception(x + " - thrown from Task StartNew.");
+                }
+
+                Task.Factory.StartNew((Action)ThrownFromTaskAction, TaskCreationOptions.LongRunning);
+            }
 
             ThrowFromTaskCommand
                 .ActivateGestures()
-                .Subscribe(x =>
-                           {
-                               Logger.Info("ThrowFromTaskCommand executing...");
-
-                               Task.Factory.StartNew(() =>
-                                                     {
-                                                         Thread.Sleep(1000);
-
-                                                         throw new Exception(x + " - thrown from Task StartNew.");
-                                                     }, TaskCreationOptions.LongRunning);
-                           })
+                .Subscribe((Action<object>)ThrowFromTaskCommandExecute)
                 .DisposeWith(this);
 
+            void ThrowFromRxCommandExecute(object x)
+            {
+                Logger.Info("ThrowFromRxCommand executing...");
+
+                void ThrownFromRxAction()
+                {
+                    Thread.Sleep(1000);
+
+                    throw new Exception(x + " - thrown from Rx Start.");
+                }
+
+                Observable.Start(ThrownFromRxAction, schedulerService.TaskPool)
+                    .Take(1)
+                    .Subscribe();
+            }
 
             ThrowFromRxCommand
                 .ActivateGestures()
-                .Subscribe(x =>
-                           {
-                               Logger.Info("ThrowFromRxCommand executing...");
-
-                               Observable.Start(() =>
-                                                {
-                                                    Thread.Sleep(1000);
-
-                                                    throw new Exception(x + " - thrown from Rx Start.");
-                                                }, schedulerService.TaskPool)
-                                   .Take(1)
-                                   .Subscribe();
-                           })
+                .Subscribe((Action<object>)ThrowFromRxCommandExecute)
                 .DisposeWith(this);
         }
 
